@@ -1,27 +1,73 @@
-<?
-// This is a template for a PHP scraper on morph.io (https://morph.io)
-// including some code snippets below that you should find helpful
-
-// require 'scraperwiki.php';
-// require 'scraperwiki/simple_html_dom.php';
-//
-// // Read in a page
-// $html = scraperwiki::scrape("http://foo.com");
-//
-// // Find something on the page using css selectors
-// $dom = new simple_html_dom();
-// $dom->load($html);
-// print_r($dom->find("table.list"));
-//
-// // Write out to the sqlite database using scraperwiki library
-// scraperwiki::save_sqlite(array('name'), array('name' => 'susan', 'occupation' => 'software developer'));
-//
-// // An arbitrary query against the database
-// scraperwiki::select("* from data where 'name'='peter'")
-
-// You don't have to do things with the ScraperWiki library.
-// You can use whatever libraries you want: https://morph.io/documentation/php
-// All that matters is that your final data is written to an SQLite database
-// called "data.sqlite" in the current working directory which has at least a table
-// called "data".
+<?php
+require 'scraperwiki.php'; 
+date_default_timezone_set('Australia/Sydney');
+require 'scraperwiki/simple_html_dom.php';
+$mainUrl = scraperWiki::scrape("http://www.fairfieldcity.nsw.gov.au/default.asp?iNavCatID=54&iSubCatID=2240");
+$dom = new simple_html_dom();
+$dom->load($mainUrl);
+$container = $dom->find("#main table #content", 0);
+foreach($container->find("table") as $table)
+{
+    $rows = $table->find("tr");
+    print ("Number of records: " . sizeof($rows));
+    for($i = 1; $i < sizeof($rows); $i++)
+    {
+      $row = $table->find("tr", $i);
+      $record = array();
+      $cell0 = $row->find("td", 0);
+      $cell1 = $row->find("td", 1);
+      $cell2 = $row->find("td", 2);
+      $cell3 = $row->find("td", 3);
+      $cell4 = $row->find("td", 4);
+      $council_reference = trim(html_entity_decode($cell0->plaintext));
+      $record['council_reference'] = preg_replace('/[ ]/', '', $council_reference);
+      $record['address'] = trim(preg_replace('/[^a-zA-Z0-9 \.,]/', '', html_entity_decode($cell1->plaintext))) . ", NSW";
+      $description = trim(html_entity_decode($cell2->plaintext));
+      $description = preg_replace('/[^a-zA-Z0-9 \.,]/', '', $description);
+      if(strlen($description) > 228)
+      {
+  	$description = substr($description, 0, 225) . "...";
+      }
+      $record['description'] = $description;
+      $dateFromString = trim(html_entity_decode($cell3->plaintext));
+      $dateFromString = preg_replace("/&#?[a-z0-9]{2,8};/i","",$dateFromString);
+      $dateFromString = str_replace("&nbsp;", '', $dateFromString);
+      $dateFrom = date('Y-m-d', strtotime($dateFromString));
+      if($dateFrom != '1970-01-01')
+      {
+  	$record['on_notice_from'] = $dateFrom;
+      }
+      $dateToString = trim(html_entity_decode($cell4->plaintext));
+      $dateToString = preg_replace("/&#?[a-z0-9]{2,8};/i","",$dateToString);
+      $dateToString = str_replace("&nbsp;", '', $dateToString);
+      $dateTo = date('Y-m-d', strtotime($dateToString));
+      if($dateTo != '1970-01-01')
+      {
+  	$record['on_notice_to'] = $dateTo;
+      }
+      $record['info_url'] = 'http://www.fairfieldcity.nsw.gov.au/default.asp?iNavCatID=54&iSubCatID=2240';
+      $record['comment_url'] = 'http://www.fairfieldcity.nsw.gov.au/default.asp?iDocID=6779&iNavCatID=54&iSubCatID=2249';
+      $record['date_scraped'] = date('Y-m-d');
+      if($record['council_reference'] != '' && $record['description'] != '')
+      {
+          $existingRecords = scraperwiki::select("* from data where `council_reference`='" . $record['council_reference'] . "'");
+          if (count($existingRecords) == 0)
+          {
+              print ("Saving record " . $record['council_reference'] . "\n");
+              //print_r ($record);
+              scraperwiki::save(array('council_reference'), $record);
+          }
+          else
+          {
+              print ("Skipping already saved record " . $record['council_reference'] . "\n");
+          }
+      }
+      else
+      {
+          print ("Unable to save the following record:\n");
+          print_r ($record);
+      }
+    }
+}
 ?>
+
